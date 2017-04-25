@@ -27,7 +27,6 @@ import com.codahale.metrics.annotation.Metered;
 import com.codahale.metrics.annotation.Timed;
 import com.codahale.metrics.health.HealthCheck;
 import io.dropwizard.Application;
-import io.dropwizard.Configuration;
 import io.dropwizard.setup.Bootstrap;
 import io.dropwizard.setup.Environment;
 import org.eclipse.jetty.util.component.AbstractLifeCycle;
@@ -47,7 +46,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.spec.InvalidKeySpecException;
 import java.util.concurrent.CountDownLatch;
 
-public class MyApp extends Application<Configuration> {
+public class MyApp extends Application<MyAppConfiguration> {
     private final CountDownLatch cdl;
 
     MyApp(CountDownLatch cdl) {
@@ -55,15 +54,15 @@ public class MyApp extends Application<Configuration> {
     }
 
     @Override
-    public void initialize(Bootstrap<Configuration> bootstrap) {
-        websocketBundle = new WebsocketBundle(AnnotatedEchoServer.class);
+    public void initialize(Bootstrap<MyAppConfiguration> bootstrap) {
+        websocketBundle = new WebsocketBundle<MyAppConfiguration>(AnnotatedEchoServer.class);
         bootstrap.addBundle(websocketBundle);
     }
 
     private WebsocketBundle websocketBundle;
 
     @Override
-    public void run(Configuration configuration, Environment environment) throws InvalidKeySpecException, NoSuchAlgorithmException, ServletException, DeploymentException {
+    public void run(MyAppConfiguration configuration, Environment environment) throws InvalidKeySpecException, NoSuchAlgorithmException, ServletException, DeploymentException {
         environment.lifecycle().addLifeCycleListener(new AbstractLifeCycle.AbstractLifeCycleListener() {
 
             @Override
@@ -74,8 +73,8 @@ public class MyApp extends Application<Configuration> {
         environment.jersey().register(new MyResource());
         environment.healthChecks().register("alive", new HealthCheck() {
             @Override
-            protected HealthCheck.Result check() throws Exception {
-                return HealthCheck.Result.healthy();
+            protected Result check() throws Exception {
+                return Result.healthy();
             }
         });
 

@@ -5,3 +5,6 @@ server:
   adminConnectors:
     - type: http
       port: 48081
+
+websockets:
+  maxSessionIdleTimeout: 100s

@@ -22,10 +22,14 @@
  */
 package io.dropwizard.websockets;
 
-import io.dropwizard.Bundle;
+import com.google.common.base.Optional;
+import io.dropwizard.Configuration;
+import io.dropwizard.ConfiguredBundle;
 import io.dropwizard.metrics.jetty9.websockets.InstWebSocketServerContainerInitializer;
 import io.dropwizard.setup.Bootstrap;
 import io.dropwizard.setup.Environment;
+import io.dropwizard.util.Duration;
+import io.dropwizard.util.Size;
 import org.eclipse.jetty.util.component.AbstractLifeCycle;
 import org.eclipse.jetty.util.component.LifeCycle;
 import org.eclipse.jetty.websocket.jsr356.server.ServerContainer;
@@ -42,12 +46,13 @@ import java.util.Collection;
 
 import static io.dropwizard.websockets.GeneralUtils.rethrow;
 
-public class WebsocketBundle implements Bundle {
+public class WebsocketBundle<T extends Configuration> implements ConfiguredBundle<T> {
 
     private final Collection<ServerEndpointConfig> endpointConfigs = new ArrayList<>();
     private static final Logger LOG = LoggerFactory.getLogger(WebsocketBundle.class);
     volatile boolean starting = false;
     private ServerEndpointConfig.Configurator defaultConfigurator;
+    public static final WebsocketConfiguration DEFAULT_CONFIG = new WebsocketConfiguration();
 
 
     public WebsocketBundle(ServerEndpointConfig.Configurator defaultConfigurator, Class<?>... endpoints) {
@@ -74,6 +79,14 @@ public class WebsocketBundle implements Bundle {
             throw new RuntimeException("can't add endpoint after starting lifecycle");
     }
 
+    protected WebsocketConfiguration getWebsocketConfiguration(T configuration) {
+        if (configuration instanceof WebsocketBundleConfiguration) {
+            return ((WebsocketBundleConfiguration) configuration).getWebsocketConfiguration();
+        } else {
+            return DEFAULT_CONFIG;
+        }
+    }
+
     public void addEndpoint(Class<?> clazz) {
         ServerEndpoint anno = clazz.getAnnotation(ServerEndpoint.class);
         if(anno == null){
@@ -93,7 +106,11 @@ public class WebsocketBundle implements Bundle {
     }
 
     @Override
-    public void run(Environment environment) {
+    public void run(T configuration, Environment environment) {
+        final WebsocketConfiguration websocketConfiguration = getWebsocketConfiguration(configuration);
+        if(websocketConfiguration == null) {
+            throw new RuntimeException("You need to provide an implementation of WebsocketBundleConfigurationInterface");
+        }
         environment.lifecycle().addLifeCycleListener(new AbstractLifeCycle.AbstractLifeCycleListener() {
 
             @Override
@@ -102,6 +119,8 @@ public class WebsocketBundle implements Bundle {
                 try {
                     ServerContainer wsContainer = InstWebSocketServerContainerInitializer.
                             configureContext(environment.getApplicationContext(), environment.metrics());
+
+                    setWebsocketConfiguration(wsContainer, websocketConfiguration);
 
                     StringBuilder sb = new StringBuilder("Registering websocket endpoints: ")
                             .append(System.lineSeparator())
@@ -116,6 +135,25 @@ public class WebsocketBundle implements Bundle {
             private void addEndpoint(ServerContainer wsContainer, ServerEndpointConfig conf, StringBuilder sb) throws DeploymentException {
                 wsContainer.addEndpoint(conf);
                 sb.append(String.format("    WS      %s (%s)", conf.getPath(), conf.getEndpointClass().getName())).append(System.lineSeparator());
+            }
+
+            private void setWebsocketConfiguration(ServerContainer serverContainer, WebsocketConfiguration websocketConfiguration) {
+                Optional<Duration> idleTimeout = Optional.fromNullable(websocketConfiguration.getMaxSessionIdleTimeout());
+                if (idleTimeout.isPresent()) {
+                    serverContainer.setDefaultMaxSessionIdleTimeout(idleTimeout.get().toMilliseconds());
+                }
+                Optional<Duration> asyncTimeout = Optional.fromNullable(websocketConfiguration.getAsyncSendTimeout());
+                if (asyncTimeout.isPresent()) {
+                    serverContainer.setAsyncSendTimeout(asyncTimeout.get().toMilliseconds());
+                }
+                Optional<Size> binarySize = Optional.fromNullable(websocketConfiguration.getMaxBinaryMessageBufferSize());
+                if (binarySize.isPresent()) {
+                    serverContainer.setDefaultMaxBinaryMessageBufferSize((int) binarySize.get().toBytes());
+                }
+                Optional<Size> textSize = Optional.fromNullable(websocketConfiguration.getMaxTextMessageBufferSize());
+                if (textSize.isPresent()) {
+                    serverContainer.setDefaultMaxTextMessageBufferSize((int) textSize.get().toBytes());
+                }
             }
         });
     }
